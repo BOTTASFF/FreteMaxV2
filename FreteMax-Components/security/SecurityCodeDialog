@@ -1,0 +1,147 @@
+import React, { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Shield, CheckCircle2, AlertCircle } from "lucide-react";
+
+export default function SecurityCodeDialog({ 
+  open, 
+  onOpenChange, 
+  freight, 
+  onVerify,
+  isVerifying 
+}) {
+  const [inputCode, setInputCode] = useState("");
+  const [error, setError] = useState("");
+
+  const handleVerify = () => {
+    if (!inputCode) {
+      setError("Digite o código de segurança");
+      return;
+    }
+
+    if (inputCode !== freight?.security_code) {
+      setError("Código incorreto! Verifique com a empresa.");
+      return;
+    }
+
+    setError("");
+    onVerify(inputCode);
+  };
+
+  const handleClose = () => {
+    setInputCode("");
+    setError("");
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-3 bg-blue-100 rounded-xl">
+              <Shield className="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <DialogTitle>Código de Segurança</DialogTitle>
+              <DialogDescription>
+                Digite o código fornecido pela empresa
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {/* Freight Info */}
+          <div className="p-4 bg-slate-50 rounded-lg space-y-2">
+            <div>
+              <p className="text-xs text-slate-500">Carga</p>
+              <p className="font-semibold text-slate-900">{freight?.cargo_name}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Empresa</p>
+              <p className="font-medium text-slate-700">{freight?.company_name}</p>
+            </div>
+          </div>
+
+          {/* Code Input */}
+          <div>
+            <Label htmlFor="security-code" className="text-sm font-medium">
+              Código de Segurança
+            </Label>
+            <Input
+              id="security-code"
+              value={inputCode}
+              onChange={(e) => {
+                setInputCode(e.target.value.toUpperCase());
+                setError("");
+              }}
+              placeholder="Ex: ABC123"
+              className={`mt-2 text-center text-2xl font-mono tracking-wider ${
+                error ? 'border-red-500' : ''
+              }`}
+              maxLength={6}
+              autoComplete="off"
+            />
+            {error && (
+              <div className="flex items-center gap-2 mt-2 text-sm text-red-600">
+                <AlertCircle className="w-4 h-4" />
+                <span>{error}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Info Box */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex gap-2">
+              <Shield className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-blue-900">
+                <p className="font-semibold mb-1">Por que precisamos deste código?</p>
+                <p>
+                  O código de segurança garante que a entrega foi realizada para a pessoa correta, 
+                  assim como no iFood. Solicite o código ao responsável no local de entrega.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button
+            variant="outline"
+            onClick={handleClose}
+            disabled={isVerifying}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleVerify}
+            disabled={isVerifying || !inputCode}
+            className="bg-green-600 hover:bg-green-700 gap-2"
+          >
+            {isVerifying ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                Verificando...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                Confirmar Entrega
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
