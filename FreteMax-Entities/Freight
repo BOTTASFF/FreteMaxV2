@@ -1,0 +1,97 @@
+{
+  "name": "Freight",
+  "type": "object",
+  "properties": {
+    "cargo_name": {
+      "type": "string",
+      "description": "Nome da carga"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o detalhada da carga"
+    },
+    "pickup_location": {
+      "type": "string",
+      "description": "Local de retirada"
+    },
+    "delivery_location": {
+      "type": "string",
+      "description": "Local de entrega"
+    },
+    "freight_value": {
+      "type": "number",
+      "description": "Valor do frete em reais"
+    },
+    "pickup_deadline": {
+      "type": "string",
+      "format": "date",
+      "description": "Data limite para coleta"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Peso da carga em kg"
+    },
+    "dimensions": {
+      "type": "string",
+      "description": "Dimens\u00f5es da carga (LxAxP)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "available",
+        "assigned",
+        "in_transit",
+        "delivered",
+        "cancelled"
+      ],
+      "default": "available",
+      "description": "Status do frete"
+    },
+    "company_id": {
+      "type": "string",
+      "description": "ID da empresa respons\u00e1vel"
+    },
+    "company_name": {
+      "type": "string",
+      "description": "Nome da empresa"
+    },
+    "driver_id": {
+      "type": "string",
+      "description": "ID do motorista atribu\u00eddo"
+    },
+    "driver_name": {
+      "type": "string",
+      "description": "Nome do motorista"
+    },
+    "accepted_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Data que o frete foi aceito"
+    },
+    "delivery_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Data da entrega"
+    },
+    "proof_url": {
+      "type": "string",
+      "description": "URL do comprovante de entrega"
+    },
+    "security_code": {
+      "type": "string",
+      "description": "C\u00f3digo de seguran\u00e7a para confirma\u00e7\u00e3o da entrega"
+    },
+    "security_code_verified": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se o c\u00f3digo de seguran\u00e7a foi verificado"
+    }
+  },
+  "required": [
+    "cargo_name",
+    "pickup_location",
+    "delivery_location",
+    "freight_value",
+    "pickup_deadline"
+  ]
+}
