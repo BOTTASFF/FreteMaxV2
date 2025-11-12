@@ -1,0 +1,336 @@
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Package, 
+  Search, 
+  MapPin,
+  Calendar,
+  DollarSign,
+  Building2,
+  CheckCircle2,
+  Map as MapIcon,
+  List
+} from "lucide-react";
+import { format } from "date-fns";
+import { toast } from "sonner";
+import FreightMapList from "../components/map/FreightMapList";
+
+export default function AvailableFreights() {
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [minValue, setMinValue] = useState("");
+  const [maxValue, setMaxValue] = useState("");
+  const [viewMode, setViewMode] = useState("list");
+  const [selectedFreight, setSelectedFreight] = useState(null);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const userData = await base44.auth.me();
+      setUser(userData);
+    };
+    loadUser();
+  }, []);
+
+  const { data: freights = [], isLoading } = useQuery({
+    queryKey: ['available-freights'],
+    queryFn: () => base44.entities.Freight.filter({ status: 'available' }, '-created_date'),
+    initialData: []
+  });
+
+  const acceptMutation = useMutation({
+    mutationFn: (freight) => base44.entities.Freight.update(freight.id, {
+      status: 'assigned',
+      driver_id: user.id,
+      driver_name: user.full_name,
+      accepted_date: new Date().toISOString()
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['available-freights']);
+      queryClient.invalidateQueries(['my-freights']);
+      toast.success("Frete aceito com sucesso! Veja em 'Meus Fretes'");
+      setSelectedFreight(null);
+    },
+    onError: () => {
+      toast.error("Erro ao aceitar frete");
+    }
+  });
+
+  const filteredFreights = freights.filter(freight => {
+    const matchesSearch = 
+      freight.cargo_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      freight.pickup_location?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      freight.delivery_location?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesMinValue = !minValue || freight.freight_value >= parseFloat(minValue);
+    const matchesMaxValue = !maxValue || freight.freight_value <= parseFloat(maxValue);
+    
+    return matchesSearch && matchesMinValue && matchesMaxValue;
+  });
+
+  const handleFreightClick = (freight) => {
+    setSelectedFreight(freight);
+    setViewMode("list");
+    setTimeout(() => {
+      document.getElementById(`freight-${freight.id}`)?.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center' 
+      });
+    }, 100);
+  };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Fretes Disponíveis</h1>
+          <p className="text-slate-600 mt-1">Encontre e aceite fretes que combinam com você</p>
+        </div>
+
+        {/* Filters */}
+        <Card className="shadow-lg">
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Input
+                    placeholder="Buscar por nome, origem ou destino..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    placeholder="Valor mín (R$)"
+                    value={minValue}
+                    onChange={(e) => setMinValue(e.target.value)}
+                    className="w-36"
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Valor máx (R$)"
+                    value={maxValue}
+                    onChange={(e) => setMaxValue(e.target.value)}
+                    className="w-36"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-slate-600">
+                  Mostrando {filteredFreights.length} de {freights.length} fretes
+                </div>
+                <Tabs value={viewMode} onValueChange={setViewMode}>
+                  <TabsList>
+                    <TabsTrigger value="list" className="gap-2">
+                      <List className="w-4 h-4" />
+                      Lista
+                    </TabsTrigger>
+                    <TabsTrigger value="map" className="gap-2">
+                      <MapIcon className="w-4 h-4" />
+                      Mapa
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Map View */}
+        {viewMode === "map" && (
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapIcon className="w-5 h-5" />
+                Visualização no Mapa
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <FreightMapList 
+                freights={filteredFreights}
+                height="600px"
+                onFreightClick={handleFreightClick}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* List View */}
+        {viewMode === "list" && (
+          <div className="grid gap-6">
+            {isLoading ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
+                </CardContent>
+              </Card>
+            ) : filteredFreights.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Package className="w-16 h-16 mx-auto text-slate-300 mb-4" />
+                  <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                    {searchQuery || minValue || maxValue ? "Nenhum frete encontrado" : "Nenhum frete disponível"}
+                  </h3>
+                  <p className="text-slate-600">
+                    {searchQuery || minValue || maxValue 
+                      ? "Tente ajustar os filtros de busca" 
+                      : "Novos fretes serão publicados em breve"}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              filteredFreights.map((freight) => (
+                <Card 
+                  key={freight.id} 
+                  id={`freight-${freight.id}`}
+                  className={`hover:shadow-2xl transition-all border-2 ${
+                    selectedFreight?.id === freight.id 
+                      ? 'border-blue-500 ring-4 ring-blue-100' 
+                      : 'hover:border-blue-200'
+                  }`}
+                >
+                  <CardContent className="p-6">
+                    <div className="flex flex-col lg:flex-row gap-6">
+                      {/* Main Content */}
+                      <div className="flex-1 space-y-4">
+                        {/* Header */}
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="text-2xl font-bold text-slate-900 mb-2">{freight.cargo_name}</h3>
+                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                              <Building2 className="w-4 h-4" />
+                              <span>{freight.company_name}</span>
+                            </div>
+                          </div>
+                          <Badge className="bg-green-100 text-green-700 border-green-200 border px-3 py-1">
+                            Disponível
+                          </Badge>
+                        </div>
+
+                        {/* Description */}
+                        {freight.description && (
+                          <p className="text-slate-600">{freight.description}</p>
+                        )}
+
+                        {/* Details Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl">
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 bg-blue-100 rounded-lg">
+                              <MapPin className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500 mb-1">Retirada</p>
+                              <p className="font-semibold text-slate-900">{freight.pickup_location}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 bg-green-100 rounded-lg">
+                              <MapPin className="w-5 h-5 text-green-600" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500 mb-1">Entrega</p>
+                              <p className="font-semibold text-slate-900">{freight.delivery_location}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 bg-purple-100 rounded-lg">
+                              <Calendar className="w-5 h-5 text-purple-600" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-500 mb-1">Data Limite</p>
+                              <p className="font-semibold text-slate-900">
+                                {format(new Date(freight.pickup_deadline), 'dd/MM/yyyy')}
+                              </p>
+                            </div>
+                          </div>
+
+                          {freight.weight && (
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 bg-orange-100 rounded-lg">
+                                <Package className="w-5 h-5 text-orange-600" />
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-500 mb-1">Peso</p>
+                                <p className="font-semibold text-slate-900">{freight.weight} kg</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {freight.dimensions && (
+                          <div className="text-sm text-slate-600">
+                            <span className="font-medium">Dimensões:</span> {freight.dimensions}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Sidebar - Value and Action */}
+                      <div className="lg:w-72 flex flex-col gap-4">
+                        <div className="p-6 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl text-white shadow-lg shadow-green-500/30">
+                          <p className="text-sm opacity-90 mb-2">Valor do Frete</p>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-8 h-8" />
+                            <div className="text-4xl font-bold">
+                              {new Intl.NumberFormat('pt-BR', { 
+                                style: 'currency', 
+                                currency: 'BRL',
+                                minimumFractionDigits: 2
+                              }).format(freight.freight_value)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <Button
+                          onClick={() => acceptMutation.mutate(freight)}
+                          disabled={acceptMutation.isPending}
+                          className="w-full bg-blue-600 hover:bg-blue-700 h-14 text-lg font-semibold gap-2 shadow-lg shadow-blue-500/30"
+                        >
+                          {acceptMutation.isPending ? (
+                            <>
+                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                              Aceitando...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-5 h-5" />
+                              Aceitar Frete
+                            </>
+                          )}
+                        </Button>
+
+                        <div className="text-xs text-slate-500 text-center">
+                          Ao aceitar, você se compromete com a entrega
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,440 @@
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Truck, 
+  MapPin,
+  Calendar,
+  DollarSign,
+  Building2,
+  CheckCircle2,
+  Star,
+  Package,
+  Map as MapIcon,
+  Shield
+} from "lucide-react";
+import { format } from "date-fns";
+import { toast } from "sonner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import FreightMap from "../components/map/FreightMap";
+import SecurityCodeDialog from "../components/security/SecurityCodeDialog";
+
+export default function MyFreights() {
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [ratingDialog, setRatingDialog] = useState(null);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+  const [expandedMap, setExpandedMap] = useState(null);
+  const [securityCodeDialog, setSecurityCodeDialog] = useState(null);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const userData = await base44.auth.me();
+      setUser(userData);
+    };
+    loadUser();
+  }, []);
+
+  const { data: freights = [], isLoading } = useQuery({
+    queryKey: ['my-freights', user?.id],
+    queryFn: () => base44.entities.Freight.filter({ driver_id: user?.id }, '-updated_date'),
+    enabled: !!user,
+    initialData: []
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }) => {
+      const updateData = { status };
+      if (status === 'delivered') {
+        updateData.delivery_date = new Date().toISOString();
+      }
+      return base44.entities.Freight.update(id, updateData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['my-freights']);
+      toast.success("Status atualizado com sucesso!");
+    },
+    onError: () => {
+      toast.error("Erro ao atualizar status");
+    }
+  });
+
+  const verifySecurityCodeMutation = useMutation({
+    mutationFn: ({ id }) => {
+      return base44.entities.Freight.update(id, {
+        status: 'delivered',
+        delivery_date: new Date().toISOString(),
+        security_code_verified: true
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['my-freights']);
+      toast.success("Entrega confirmada com sucesso!");
+      setSecurityCodeDialog(null);
+    },
+    onError: () => {
+      toast.error("Erro ao confirmar entrega");
+    }
+  });
+
+  const submitRatingMutation = useMutation({
+    mutationFn: (data) => base44.entities.Rating.create(data),
+    onSuccess: () => {
+      toast.success("Avaliação enviada com sucesso!");
+      setRatingDialog(null);
+      setRating(5);
+      setComment("");
+    },
+    onError: () => {
+      toast.error("Erro ao enviar avaliação");
+    }
+  });
+
+  const handleCompleteDelivery = (freight) => {
+    if (freight.security_code) {
+      // If freight has security code, show verification dialog
+      setSecurityCodeDialog(freight);
+    } else {
+      // If no security code, complete directly
+      updateStatusMutation.mutate({ id: freight.id, status: 'delivered' });
+    }
+  };
+
+  const handleVerifySecurityCode = (code) => {
+    verifySecurityCodeMutation.mutate({ id: securityCodeDialog.id });
+  };
+
+  const handleSubmitRating = () => {
+    submitRatingMutation.mutate({
+      freight_id: ratingDialog.id,
+      rated_user_id: ratingDialog.company_id,
+      rated_user_type: "company",
+      rating_user_id: user.id,
+      score: rating,
+      comment: comment
+    });
+  };
+
+  const filteredFreights = freights.filter(freight => {
+    if (statusFilter === "all") return true;
+    return freight.status === statusFilter;
+  });
+
+  const statusConfig = {
+    assigned: { label: 'Atribuído', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', canStart: true },
+    in_transit: { label: 'Em Trânsito', color: 'bg-purple-100 text-purple-700 border-purple-200', canComplete: true },
+    delivered: { label: 'Entregue', color: 'bg-green-100 text-green-700 border-green-200', canRate: true }
+  };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Meus Fretes</h1>
+          <p className="text-slate-600 mt-1">Gerencie seus fretes e atualize o status das entregas</p>
+        </div>
+
+        {/* Filters */}
+        <Card className="shadow-lg">
+          <CardContent className="pt-6">
+            <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+              <TabsList>
+                <TabsTrigger value="all">Todos ({freights.length})</TabsTrigger>
+                <TabsTrigger value="assigned">
+                  Atribuídos ({freights.filter(f => f.status === 'assigned').length})
+                </TabsTrigger>
+                <TabsTrigger value="in_transit">
+                  Em Trânsito ({freights.filter(f => f.status === 'in_transit').length})
+                </TabsTrigger>
+                <TabsTrigger value="delivered">
+                  Entregues ({freights.filter(f => f.status === 'delivered').length})
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </CardContent>
+        </Card>
+
+        {/* Freights List */}
+        {isLoading ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
+            </CardContent>
+          </Card>
+        ) : filteredFreights.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Truck className="w-16 h-16 mx-auto text-slate-300 mb-4" />
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                Nenhum frete encontrado
+              </h3>
+              <p className="text-slate-600">
+                {statusFilter === "all" 
+                  ? "Você ainda não aceitou nenhum frete" 
+                  : `Nenhum frete com status "${statusConfig[statusFilter]?.label}"`}
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {filteredFreights.map((freight) => {
+              const config = statusConfig[freight.status] || {};
+              const isMapExpanded = expandedMap === freight.id;
+              
+              return (
+                <Card key={freight.id} className="hover:shadow-xl transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col lg:flex-row gap-6">
+                      {/* Main Info */}
+                      <div className="flex-1 space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">{freight.cargo_name}</h3>
+                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                              <Building2 className="w-4 h-4" />
+                              <span>{freight.company_name}</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Badge className={`${config.color} border`}>
+                              {config.label}
+                            </Badge>
+                            {freight.security_code && (
+                              <Badge className={`${
+                                freight.security_code_verified 
+                                  ? 'bg-green-100 text-green-700 border-green-200' 
+                                  : 'bg-blue-100 text-blue-700 border-blue-200'
+                              } border flex items-center gap-1`}>
+                                <Shield className="w-3 h-3" />
+                                {freight.security_code_verified ? 'Verificado' : 'Protegido'}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+
+                        {freight.description && (
+                          <p className="text-slate-600 text-sm">{freight.description}</p>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl">
+                          <div className="flex items-center gap-3">
+                            <MapPin className="w-5 h-5 text-blue-600" />
+                            <div>
+                              <p className="text-xs text-slate-500">Origem</p>
+                              <p className="font-semibold text-slate-900">{freight.pickup_location}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <MapPin className="w-5 h-5 text-green-600" />
+                            <div>
+                              <p className="text-xs text-slate-500">Destino</p>
+                              <p className="font-semibold text-slate-900">{freight.delivery_location}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <Calendar className="w-5 h-5 text-purple-600" />
+                            <div>
+                              <p className="text-xs text-slate-500">Data Limite</p>
+                              <p className="font-semibold text-slate-900">
+                                {format(new Date(freight.pickup_deadline), 'dd/MM/yyyy')}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <DollarSign className="w-5 h-5 text-green-600" />
+                            <div>
+                              <p className="text-xs text-slate-500">Valor</p>
+                              <p className="font-semibold text-green-600">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(freight.freight_value)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {freight.weight && (
+                          <div className="flex items-center gap-2 text-sm text-slate-600">
+                            <Package className="w-4 h-4" />
+                            <span>Peso: {freight.weight} kg</span>
+                            {freight.dimensions && <span>• Dimensões: {freight.dimensions}</span>}
+                          </div>
+                        )}
+
+                        {/* Map Toggle */}
+                        <Button
+                          variant="outline"
+                          onClick={() => setExpandedMap(isMapExpanded ? null : freight.id)}
+                          className="w-full gap-2"
+                        >
+                          <MapIcon className="w-4 h-4" />
+                          {isMapExpanded ? 'Ocultar Mapa' : 'Ver Rota no Mapa'}
+                        </Button>
+
+                        {/* Map */}
+                        {isMapExpanded && (
+                          <div className="mt-4">
+                            <FreightMap
+                              pickupLocation={freight.pickup_location}
+                              deliveryLocation={freight.delivery_location}
+                              freight={freight}
+                              height="400px"
+                              showRoute={true}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="lg:w-64 flex flex-col gap-3">
+                        {config.canStart && (
+                          <Button
+                            onClick={() => updateStatusMutation.mutate({ id: freight.id, status: 'in_transit' })}
+                            disabled={updateStatusMutation.isPending}
+                            className="w-full bg-purple-600 hover:bg-purple-700 gap-2"
+                          >
+                            <Truck className="w-4 h-4" />
+                            Iniciar Entrega
+                          </Button>
+                        )}
+
+                        {config.canComplete && (
+                          <Button
+                            onClick={() => handleCompleteDelivery(freight)}
+                            disabled={updateStatusMutation.isPending || verifySecurityCodeMutation.isPending}
+                            className="w-full bg-green-600 hover:bg-green-700 gap-2"
+                          >
+                            {freight.security_code ? (
+                              <>
+                                <Shield className="w-4 h-4" />
+                                Confirmar com Código
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-4 h-4" />
+                                Marcar como Entregue
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                        {config.canRate && (
+                          <Button
+                            onClick={() => setRatingDialog(freight)}
+                            variant="outline"
+                            className="w-full gap-2"
+                          >
+                            <Star className="w-4 h-4" />
+                            Avaliar Empresa
+                          </Button>
+                        )}
+
+                        {freight.status === 'delivered' && freight.delivery_date && (
+                          <div className="text-xs text-slate-500 text-center p-2 bg-green-50 rounded-lg">
+                            Entregue em {format(new Date(freight.delivery_date), 'dd/MM/yyyy')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Security Code Dialog */}
+        <SecurityCodeDialog
+          open={!!securityCodeDialog}
+          onOpenChange={(open) => !open && setSecurityCodeDialog(null)}
+          freight={securityCodeDialog}
+          onVerify={handleVerifySecurityCode}
+          isVerifying={verifySecurityCodeMutation.isPending}
+        />
+
+        {/* Rating Dialog */}
+        <Dialog open={!!ratingDialog} onOpenChange={() => setRatingDialog(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Avaliar Empresa</DialogTitle>
+              <DialogDescription>
+                Como foi sua experiência com {ratingDialog?.company_name}?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div>
+                <Label>Nota (1-5 estrelas)</Label>
+                <div className="flex gap-2 mt-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      onClick={() => setRating(star)}
+                      className="transition-transform hover:scale-110"
+                    >
+                      <Star
+                        className={`w-8 h-8 ${
+                          star <= rating
+                            ? 'fill-yellow-400 text-yellow-400'
+                            : 'text-slate-300'
+                        }`}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label>Comentário (opcional)</Label>
+                <Textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Conte como foi sua experiência..."
+                  className="mt-2"
+                />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setRatingDialog(null)}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSubmitRating}
+                  disabled={submitRatingMutation.isPending}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                >
+                  {submitRatingMutation.isPending ? "Enviando..." : "Enviar Avaliação"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+}

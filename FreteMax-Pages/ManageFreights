@@ -1,0 +1,381 @@
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Package, 
+  Search, 
+  Edit2, 
+  Trash2,
+  Truck,
+  MapPin,
+  Calendar,
+  DollarSign,
+  Filter,
+  Map as MapIcon,
+  List,
+  Shield
+} from "lucide-react";
+import { format } from "date-fns";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import FreightMapList from "../components/map/FreightMapList";
+import SecurityCodeDisplay from "../components/security/SecurityCodeDisplay";
+
+export default function ManageFreights() {
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [freightToDelete, setFreightToDelete] = useState(null);
+  const [viewMode, setViewMode] = useState("list");
+  const [selectedFreight, setSelectedFreight] = useState(null);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const userData = await base44.auth.me();
+      setUser(userData);
+    };
+    loadUser();
+  }, []);
+
+  const { data: freights = [], isLoading } = useQuery({
+    queryKey: ['company-freights', user?.id],
+    queryFn: () => base44.entities.Freight.filter({ company_id: user?.id }, '-created_date'),
+    enabled: !!user,
+    initialData: []
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => base44.entities.Freight.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['company-freights']);
+      toast.success("Carga excluída com sucesso!");
+      setFreightToDelete(null);
+    },
+    onError: () => {
+      toast.error("Erro ao excluir carga");
+    }
+  });
+
+  const generateSecurityCodeMutation = useMutation({
+    mutationFn: (id) => {
+      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      return base44.entities.Freight.update(id, { 
+        security_code: code,
+        security_code_verified: false 
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['company-freights']);
+      toast.success("Código de segurança gerado!");
+    },
+    onError: () => {
+      toast.error("Erro ao gerar código");
+    }
+  });
+
+  const filteredFreights = freights.filter(freight => {
+    const matchesSearch = 
+      freight.cargo_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      freight.pickup_location?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      freight.delivery_location?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesStatus = statusFilter === "all" || freight.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const handleFreightClick = (freight) => {
+    setSelectedFreight(freight);
+    setViewMode("list");
+    setTimeout(() => {
+      document.getElementById(`freight-${freight.id}`)?.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center' 
+      });
+    }, 100);
+  };
+
+  const statusConfig = {
+    available: { label: 'Disponível', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+    assigned: { label: 'Atribuído', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+    in_transit: { label: 'Em Trânsito', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+    delivered: { label: 'Entregue', color: 'bg-green-100 text-green-700 border-green-200' },
+    cancelled: { label: 'Cancelado', color: 'bg-red-100 text-red-700 border-red-200' }
+  };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Gerenciar Cargas</h1>
+            <p className="text-slate-600 mt-1">Visualize, edite e exclua suas cargas</p>
+          </div>
+          <Link to={createPageUrl("NewFreight")}>
+            <Button className="bg-blue-600 hover:bg-blue-700 gap-2">
+              <Package className="w-4 h-4" />
+              Nova Carga
+            </Button>
+          </Link>
+        </div>
+
+        {/* Filters */}
+        <Card className="shadow-lg">
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Input
+                    placeholder="Buscar por nome, origem ou destino..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <div>
+                  <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+                    <TabsList>
+                      <TabsTrigger value="all">Todos</TabsTrigger>
+                      <TabsTrigger value="available">Disponível</TabsTrigger>
+                      <TabsTrigger value="in_transit">Em Trânsito</TabsTrigger>
+                      <TabsTrigger value="delivered">Entregue</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-slate-600">
+                  {filteredFreights.length} {filteredFreights.length === 1 ? 'carga' : 'cargas'}
+                </div>
+                <Tabs value={viewMode} onValueChange={setViewMode}>
+                  <TabsList>
+                    <TabsTrigger value="list" className="gap-2">
+                      <List className="w-4 h-4" />
+                      Lista
+                    </TabsTrigger>
+                    <TabsTrigger value="map" className="gap-2">
+                      <MapIcon className="w-4 h-4" />
+                      Mapa
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Map View */}
+        {viewMode === "map" && (
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapIcon className="w-5 h-5" />
+                Visualização das Suas Cargas no Mapa
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <FreightMapList 
+                freights={filteredFreights}
+                height="600px"
+                onFreightClick={handleFreightClick}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Freights List */}
+        {viewMode === "list" && (
+          <div className="space-y-4">
+            {isLoading ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
+                </CardContent>
+              </Card>
+            ) : filteredFreights.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Package className="w-16 h-16 mx-auto text-slate-300 mb-4" />
+                  <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                    {searchQuery || statusFilter !== "all" ? "Nenhuma carga encontrada" : "Nenhuma carga cadastrada"}
+                  </h3>
+                  <p className="text-slate-600 mb-4">
+                    {searchQuery || statusFilter !== "all" 
+                      ? "Tente ajustar os filtros de busca" 
+                      : "Comece cadastrando sua primeira carga"}
+                  </p>
+                  <Link to={createPageUrl("NewFreight")}>
+                    <Button className="bg-blue-600 hover:bg-blue-700">
+                      Cadastrar Carga
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            ) : (
+              filteredFreights.map((freight) => (
+                <Card 
+                  key={freight.id} 
+                  id={`freight-${freight.id}`}
+                  className={`hover:shadow-xl transition-shadow ${
+                    selectedFreight?.id === freight.id 
+                      ? 'border-2 border-blue-500 ring-4 ring-blue-100' 
+                      : ''
+                  }`}
+                >
+                  <CardContent className="p-6">
+                    <div className="space-y-6">
+                      <div className="flex flex-col lg:flex-row gap-6">
+                        {/* Main Info */}
+                        <div className="flex-1 space-y-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h3 className="text-xl font-bold text-slate-900 mb-2">{freight.cargo_name}</h3>
+                              <div className="flex gap-2">
+                                <Badge className={`${statusConfig[freight.status]?.color} border`}>
+                                  {statusConfig[freight.status]?.label}
+                                </Badge>
+                                {freight.security_code && (
+                                  <Badge className={`${
+                                    freight.security_code_verified 
+                                      ? 'bg-green-100 text-green-700 border-green-200' 
+                                      : 'bg-blue-100 text-blue-700 border-blue-200'
+                                  } border flex items-center gap-1`}>
+                                    <Shield className="w-3 h-3" />
+                                    {freight.security_code_verified ? 'Verificado' : 'Protegido'}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-2xl font-bold text-green-600">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(freight.freight_value)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {freight.description && (
+                            <p className="text-slate-600 text-sm">{freight.description}</p>
+                          )}
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="flex items-center gap-2 text-sm">
+                              <MapPin className="w-4 h-4 text-blue-600" />
+                              <span className="font-medium">Origem:</span>
+                              <span className="text-slate-600">{freight.pickup_location}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <MapPin className="w-4 h-4 text-green-600" />
+                              <span className="font-medium">Destino:</span>
+                              <span className="text-slate-600">{freight.delivery_location}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="w-4 h-4 text-purple-600" />
+                              <span className="font-medium">Data Limite:</span>
+                              <span className="text-slate-600">{format(new Date(freight.pickup_deadline), 'dd/MM/yyyy')}</span>
+                            </div>
+                            {freight.weight && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <Package className="w-4 h-4 text-orange-600" />
+                                <span className="font-medium">Peso:</span>
+                                <span className="text-slate-600">{freight.weight} kg</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {freight.driver_name && (
+                            <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg">
+                              <Truck className="w-5 h-5 text-blue-600" />
+                              <span className="text-sm font-medium">Motorista:</span>
+                              <span className="text-sm text-slate-700">{freight.driver_name}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex lg:flex-col gap-2 justify-end">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="hover:bg-blue-50 hover:text-blue-600 hover:border-blue-600"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setFreightToDelete(freight)}
+                            className="hover:bg-red-50 hover:text-red-600 hover:border-red-600"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Security Code Section */}
+                      {(freight.status === 'assigned' || freight.status === 'in_transit') && (
+                        <SecurityCodeDisplay
+                          freight={freight}
+                          onGenerate={() => generateSecurityCodeMutation.mutate(freight.id)}
+                          isGenerating={generateSecurityCodeMutation.isPending}
+                        />
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Delete Dialog */}
+        <AlertDialog open={!!freightToDelete} onOpenChange={() => setFreightToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir a carga "{freightToDelete?.cargo_name}"? Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteMutation.mutate(freightToDelete.id)}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </div>
+  );
+}

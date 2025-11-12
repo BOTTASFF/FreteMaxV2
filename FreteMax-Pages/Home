@@ -1,0 +1,348 @@
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { base44 } from "@/api/base44Client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { 
+  Building2, 
+  Truck, 
+  Package, 
+  MapPin, 
+  DollarSign,
+  Users,
+  TrendingUp,
+  CheckCircle2,
+  ArrowRight
+} from "lucide-react";
+
+export default function Home() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showRegister, setShowRegister] = useState(false);
+  const [userType, setUserType] = useState(null);
+  const [formData, setFormData] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    company_name: "",
+    cnpj: "",
+    driver_license: "",
+    vehicle_type: ""
+  });
+
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const userData = await base44.auth.me();
+        setUser(userData);
+        
+        // Redirect based on user type
+        if (userData.user_type === "company") {
+          navigate(createPageUrl("CompanyDashboard"));
+        } else if (userData.user_type === "driver") {
+          navigate(createPageUrl("DriverDashboard"));
+        } else {
+          // User exists but hasn't selected type
+          setShowRegister(true);
+        }
+      } catch (error) {
+        setUser(null);
+      }
+      setLoading(false);
+    };
+    loadUser();
+  }, [navigate]);
+
+  const handleRegister = async () => {
+    try {
+      await base44.auth.updateMe({
+        user_type: userType,
+        phone: formData.phone,
+        ...(userType === "company" ? {
+          company_name: formData.company_name,
+          cnpj: formData.cnpj
+        } : {
+          driver_license: formData.driver_license,
+          vehicle_type: formData.vehicle_type
+        }),
+        rating: 5,
+        total_ratings: 0
+      });
+
+      if (userType === "company") {
+        navigate(createPageUrl("CompanyDashboard"));
+      } else {
+        navigate(createPageUrl("DriverDashboard"));
+      }
+    } catch (error) {
+      console.error("Erro ao registrar:", error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  if (showRegister && user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-2xl">
+          <CardHeader>
+            <CardTitle className="text-2xl text-center">Complete seu cadastro</CardTitle>
+            <p className="text-center text-slate-600">Escolha o tipo de perfil</p>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {!userType ? (
+              <div className="grid md:grid-cols-2 gap-4">
+                <button
+                  onClick={() => setUserType("company")}
+                  className="p-6 border-2 border-slate-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                >
+                  <Building2 className="w-12 h-12 mx-auto mb-4 text-blue-600" />
+                  <h3 className="font-bold text-lg mb-2">Sou Empresa</h3>
+                  <p className="text-sm text-slate-600">
+                    Publique cargas e contrate motoristas
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => setUserType("driver")}
+                  className="p-6 border-2 border-slate-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                >
+                  <Truck className="w-12 h-12 mx-auto mb-4 text-blue-600" />
+                  <h3 className="font-bold text-lg mb-2">Sou Motorista</h3>
+                  <p className="text-sm text-slate-600">
+                    Encontre fretes e ganhe dinheiro
+                  </p>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <Label>Telefone</Label>
+                  <Input
+                    type="tel"
+                    placeholder="(11) 98765-4321"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  />
+                </div>
+
+                {userType === "company" ? (
+                  <>
+                    <div>
+                      <Label>Nome da Empresa</Label>
+                      <Input
+                        placeholder="Transportadora XYZ Ltda"
+                        value={formData.company_name}
+                        onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>CNPJ</Label>
+                      <Input
+                        placeholder="00.000.000/0000-00"
+                        value={formData.cnpj}
+                        onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <Label>CNH</Label>
+                      <Input
+                        placeholder="00000000000"
+                        value={formData.driver_license}
+                        onChange={(e) => setFormData({ ...formData, driver_license: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>Tipo de Veículo</Label>
+                      <Input
+                        placeholder="Ex: Caminhão truck, Carreta, Van..."
+                        value={formData.vehicle_type}
+                        onChange={(e) => setFormData({ ...formData, vehicle_type: e.target.value })}
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="flex gap-3 pt-4">
+                  <Button variant="outline" onClick={() => setUserType(null)} className="flex-1">
+                    Voltar
+                  </Button>
+                  <Button onClick={handleRegister} className="flex-1 bg-blue-600 hover:bg-blue-700">
+                    Finalizar Cadastro
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Hero Section */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+        <div className="absolute inset-0 bg-grid-white/[0.05] bg-[size:60px_60px]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80" />
+        
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32">
+          <div className="text-center space-y-8">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/20 rounded-full border border-blue-500/30 backdrop-blur-sm">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <span className="text-sm text-blue-100">Sistema Online</span>
+            </div>
+
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white leading-tight">
+              Conecte sua empresa
+              <br />
+              com os <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">melhores motoristas</span>
+            </h1>
+
+            <p className="text-xl text-slate-300 max-w-2xl mx-auto">
+              Plataforma completa de gestão de fretes. Publique cargas, encontre motoristas qualificados e gerencie tudo em um só lugar.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+              <Button
+                size="lg"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-6 text-lg group"
+                onClick={() => base44.auth.redirectToLogin(createPageUrl("Home"))}
+              >
+                Começar Agora
+                <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="bg-white/10 hover:bg-white/20 text-white border-white/20 px-8 py-6 text-lg backdrop-blur-sm"
+              >
+                Saiba Mais
+              </Button>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-20">
+            {[
+              { label: "Fretes Ativos", value: "500+", icon: Package },
+              { label: "Motoristas", value: "1.2K", icon: Users },
+              { label: "Empresas", value: "300+", icon: Building2 },
+              { label: "Taxa Sucesso", value: "98%", icon: TrendingUp }
+            ].map((stat, index) => (
+              <div key={index} className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+                <stat.icon className="w-8 h-8 text-blue-400 mb-3" />
+                <p className="text-3xl font-bold text-white">{stat.value}</p>
+                <p className="text-sm text-slate-300 mt-1">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
+              Como Funciona
+            </h2>
+            <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+              Processo simples e eficiente para empresas e motoristas
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-12">
+            {/* Para Empresas */}
+            <Card className="border-2 hover:shadow-2xl transition-shadow">
+              <CardHeader className="bg-gradient-to-br from-blue-50 to-cyan-50">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-blue-600 rounded-xl">
+                    <Building2 className="w-6 h-6 text-white" />
+                  </div>
+                  <CardTitle className="text-2xl">Para Empresas</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                {[
+                  { icon: Package, text: "Cadastre suas cargas com todos os detalhes" },
+                  { icon: Users, text: "Receba propostas de motoristas qualificados" },
+                  { icon: MapPin, text: "Acompanhe o status em tempo real" },
+                  { icon: CheckCircle2, text: "Avalie e seja avaliado" }
+                ].map((item, index) => (
+                  <div key={index} className="flex items-start gap-3">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <item.icon className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <p className="text-slate-700 pt-1">{item.text}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Para Motoristas */}
+            <Card className="border-2 hover:shadow-2xl transition-shadow">
+              <CardHeader className="bg-gradient-to-br from-slate-50 to-blue-50">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-slate-700 rounded-xl">
+                    <Truck className="w-6 h-6 text-white" />
+                  </div>
+                  <CardTitle className="text-2xl">Para Motoristas</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                {[
+                  { icon: Package, text: "Veja fretes disponíveis em sua região" },
+                  { icon: DollarSign, text: "Aceite os melhores fretes para você" },
+                  { icon: MapPin, text: "Atualize o status da entrega" },
+                  { icon: TrendingUp, text: "Construa sua reputação" }
+                ].map((item, index) => (
+                  <div key={index} className="flex items-start gap-3">
+                    <div className="p-2 bg-slate-100 rounded-lg">
+                      <item.icon className="w-5 h-5 text-slate-700" />
+                    </div>
+                    <p className="text-slate-700 pt-1">{item.text}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-20 bg-gradient-to-br from-blue-600 to-blue-800 relative overflow-hidden">
+        <div className="absolute inset-0 bg-grid-white/[0.05] bg-[size:60px_60px]" />
+        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">
+            Pronto para começar?
+          </h2>
+          <p className="text-xl text-blue-100 mb-8">
+            Cadastre-se gratuitamente e comece a gerenciar seus fretes hoje mesmo.
+          </p>
+          <Button
+            size="lg"
+            className="bg-white text-blue-600 hover:bg-blue-50 px-8 py-6 text-lg font-semibold group"
+            onClick={() => base44.auth.redirectToLogin(createPageUrl("Home"))}
+          >
+            Criar Conta Grátis
+            <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}
